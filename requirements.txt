@@ -1,0 +1,7 @@
+yfinance>=0.2.40
+pandas>=2.0.0
+numpy>=1.24.0
+anthropic>=0.25.0
+requests>=2.31.0
+rich>=13.0.0
+finnhub-python>=2.4.19
