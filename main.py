@@ -18,6 +18,7 @@ from stock_analyzer.universe import get_full_universe, get_sp500_tickers, get_na
 from stock_analyzer.screener import stage1_screen, stage2_deep_analysis, rank_final_candidates
 from stock_analyzer.advisor import generate_hedge_fund_report
 from stock_analyzer.reporter import print_report
+from stock_analyzer.emailer import build_html_email, send_email
 
 console = Console()
 
@@ -29,6 +30,7 @@ def main() -> None:
     parser.add_argument("--sector", type=str, default=None, help="Filter by sector (e.g. Technology)")
     parser.add_argument("--no-ai", action="store_true", help="Skip Claude AI synthesis")
     parser.add_argument("--top", type=int, default=10, help="Number of final picks (default: 10)")
+    parser.add_argument("--email", action="store_true", help="Send report via email (requires GMAIL_USER + GMAIL_APP_PASSWORD)")
     args = parser.parse_args()
 
     start = time.time()
@@ -85,6 +87,10 @@ def main() -> None:
 
     elapsed = time.time() - start
     print_report(report_text, ranked, elapsed)
+
+    if args.email:
+        html = build_html_email(report_text, ranked)
+        send_email(html)
 
 
 if __name__ == "__main__":
