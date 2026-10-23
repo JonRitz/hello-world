@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anthropic Usage</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface-0: #f6f6f4; --surface-1: #fcfcfb; --border: #e3e2de; --grid: #ecebe7;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #77766f;
+  --s-input: #2a78d6; --s-cwrite: #eb6834; --s-cread: #1baf7a; --s-output: #eda100; --s-cost: #6250d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --surface-0: #121211; --surface-1: #1a1a19; --border: #2e2e2c; --grid: #2a2a28;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #96958c;
+    --s-input: #3987e5; --s-cwrite: #d95926; --s-cread: #199e70; --s-output: #c98500; --s-cost: #9085e9;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-0: #121211; --surface-1: #1a1a19; --border: #2e2e2c; --grid: #2a2a28;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #96958c;
+  --s-input: #3987e5; --s-cwrite: #d95926; --s-cread: #199e70; --s-output: #c98500; --s-cost: #9085e9;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface-0); color: var(--text-primary); font: 14px/1.45 system-ui, sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+h1 { font-size: 20px; margin: 0; }
+h2 { font-size: 14px; margin: 0 0 2px; }
+.sub { color: var(--text-secondary); font-size: 12px; margin: 0 0 12px; }
+.controls { display: flex; gap: 8px; align-items: center; }
+select, button { background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font: inherit; }
+.banner { background: var(--surface-1); border: 1px solid var(--s-output); border-radius: 8px; padding: 8px 12px; margin-bottom: 16px; color: var(--text-secondary); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; position: relative; }
+.tiles .card { margin: 0; }
+.label { color: var(--text-secondary); font-size: 12px; }
+.hero { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 6px 0 4px; color: var(--text-secondary); font-size: 12px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+svg { width: 100%; height: auto; display: block; overflow: visible; }
+svg text { fill: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.tip { position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.18); display: none; z-index: 5; white-space: nowrap; }
+.tip b { display: block; margin-bottom: 4px; }
+.tip div { display: flex; justify-content: space-between; gap: 16px; }
+.tip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--text-secondary); font-weight: 500; font-size: 12px; }
+.scroll { overflow-x: auto; }
+.err { color: var(--text-primary); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Anthropic usage: tokens vs. dollars</h1>
+    <div class="controls">
+      <select id="range" aria-label="Date range">
+        <option value="7">Last 7 days</option>
+        <option value="30" selected>Last 30 days</option>
+        <option value="60">Last 60 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
+      <button id="theme" type="button">Theme</button>
+    </div>
+  </header>
+  <div id="banner"></div>
+  <section class="tiles" id="tiles"></section>
+  <section class="card">
+    <h2>Tokens per day</h2>
+    <p class="sub">By token type. Cache reads are billed at a fraction of input price, so volume and spend diverge.</p>
+    <div class="legend" id="legend-tokens"></div>
+    <div id="chart-tokens"></div>
+  </section>
+  <section class="card">
+    <h2>Cost per day</h2>
+    <p class="sub">USD, same days as above.</p>
+    <div id="chart-cost"></div>
+  </section>
+  <section class="card">
+    <h2>By model</h2>
+    <p class="sub">Tokens, cost and blended price per million tokens.</p>
+    <div class="scroll" id="table"></div>
+  </section>
+  <div class="tip" id="tip"></div>
+</main>
+<script>
+const TYPES = [
+  { key: "uncached_input", label: "Input (uncached)", color: "var(--s-input)" },
+  { key: "cache_write", label: "Cache write", color: "var(--s-cwrite)" },
+  { key: "cache_read", label: "Cache read", color: "var(--s-cread)" },
+  { key: "output", label: "Output", color: "var(--s-output)" },
+];
+const $ = (id) => document.getElementById(id);
+const sum = (rows, k) => rows.reduce((a, r) => a + r[k], 0);
+const tokensOf = (r) => TYPES.reduce((a, t) => a + r[t.key], 0);
+const fmtTok = (n) => n >= 1e9 ? (n / 1e9).toFixed(2) + "B" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "K" : String(Math.round(n));
+const fmtUsd = (n) => n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: n >= 100 ? 0 : 2 });
+const fmtDay = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function niceMax(v) {
+  const p = 10 ** Math.floor(Math.log10(v || 1)); const n = v / p;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+}
+
+// Bar chart; series = [{label,color,value(row)}], stacked when >1.
+function barChart(el, rows, series, fmt) {
+  const W = 1000, H = 260, L = 52, R = 8, T = 8, B = 24;
+  const max = niceMax(Math.max(...rows.map((r) => series.reduce((a, s) => a + s.value(r), 0)), 1));
+  const bw = (W - L - R) / rows.length;
+  const y = (v) => T + (H - T - B) * (1 - v / max);
+  let g = "";
+  for (let i = 0; i <= 4; i++) {
+    const v = (max * i) / 4;
+    g += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${fmt(v)}</text>`;
+  }
+  const every = Math.ceil(rows.length / 8);
+  rows.forEach((r, i) => {
+    const x = L + i * bw, w = Math.max(bw - 2, 1);
+    let acc = 0;
+    series.forEach((s, k) => {
+      const v = s.value(r); if (!v) return;
+      const top = y(acc + v), h = y(acc) - top; acc += v;
+      // 2px surface gap between stacked segments; data-end (top) rounded on the last segment
+      g += `<rect x="${x + 1}" y="${top}" width="${w}" height="${Math.max(h - (series.length > 1 ? 2 : 0), 0.5)}" fill="${s.color}" rx="${k === series.length - 1 ? 3 : 0}"/>`;
+    });
+    if (i % every === 0) g += `<text x="${x + bw / 2}" y="${H - 6}" text-anchor="middle">${fmtDay(r.date)}</text>`;
+    g += `<rect class="hit" data-i="${i}" x="${x}" y="${T}" width="${bw}" height="${H - T - B}" fill="transparent"/>`;
+  });
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Daily chart">${g}</svg>`;
+  el.querySelectorAll(".hit").forEach((h) => {
+    h.addEventListener("mousemove", (e) => {
+      const r = rows[+h.dataset.i];
+      const lines = series.map((s) => `<div><span><i style="background:${s.color}"></i>${s.label}</span><span>${fmt(s.value(r))}</span></div>`).join("");
+      showTip(e, `<b>${fmtDay(r.date)}</b>${lines}`, el);
+    });
+    h.addEventListener("mouseleave", () => ($("tip").style.display = "none"));
+  });
+}
+
+function showTip(e, html, el) {
+  const t = $("tip"), box = t.offsetParent.getBoundingClientRect();
+  t.innerHTML = html; t.style.display = "block";
+  const x = Math.min(e.clientX - box.left + 14, box.width - t.offsetWidth - 8);
+  t.style.left = x + "px"; t.style.top = e.clientY - box.top + 14 + "px";
+}
+
+function render(data) {
+  const { days, models } = data;
+  $("banner").innerHTML = data.source === "demo"
+    ? `<div class="banner">Showing <b>sample data</b>. Set <code>ANTHROPIC_ADMIN_KEY</code> and restart the server to see real usage.</div>` : "";
+  const tok = days.reduce((a, r) => a + tokensOf(r), 0), cost = sum(days, "cost_usd");
+  const tile = (l, v, s) => `<div class="card"><div class="label">${l}</div><div class="hero">${v}</div><div class="label">${s}</div></div>`;
+  $("tiles").innerHTML =
+    tile("Total tokens", fmtTok(tok), `${fmtTok(sum(days, "output"))} output`) +
+    tile("Total cost", fmtUsd(cost), `${fmtUsd(cost / Math.max(days.length, 1))} per day`) +
+    tile("Blended price", tok ? fmtUsd((cost / tok) * 1e6) : "–", "per 1M tokens, all types") +
+    tile("Cache read share", tok ? Math.round((sum(days, "cache_read") / tok) * 100) + "%" : "–", "of all tokens");
+
+  $("legend-tokens").innerHTML = TYPES.map((t) => `<span><i style="background:${t.color}"></i>${t.label}</span>`).join("");
+  barChart($("chart-tokens"), days, TYPES.map((t) => ({ label: t.label, color: t.color, value: (r) => r[t.key] })), fmtTok);
+  barChart($("chart-cost"), days, [{ label: "Cost", color: "var(--s-cost)", value: (r) => r.cost_usd }], fmtUsd);
+
+  const head = ["Model", ...TYPES.map((t) => t.label), "Total tokens", "Cost", "$ / 1M tokens"];
+  const rowHtml = models.map((m) => {
+    const t = tokensOf(m);
+    return `<tr><td>${esc(m.model)}</td>${TYPES.map((x) => `<td>${fmtTok(m[x.key])}</td>`).join("")}<td>${fmtTok(t)}</td><td>${fmtUsd(m.cost_usd)}</td><td>${t ? fmtUsd((m.cost_usd / t) * 1e6) : "–"}</td></tr>`;
+  }).join("");
+  $("table").innerHTML = `<table><thead><tr>${head.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rowHtml}</tbody></table>`;
+}
+
+async function load() {
+  try {
+    const res = await fetch(`/api/usage?days=${$("range").value}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    render(data);
+  } catch (e) {
+    $("banner").innerHTML = `<div class="banner err">Couldn't load usage: ${esc(e.message)}</div>`;
+  }
+}
+$("range").addEventListener("change", load);
+$("theme").addEventListener("click", () => {
+  const dark = document.documentElement.dataset.theme === "dark" || (!document.documentElement.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.dataset.theme = dark ? "light" : "dark";
+});
+load();
+</script>
+</body>
+</html>
